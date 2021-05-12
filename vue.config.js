@@ -1,6 +1,8 @@
 'use strict'
 const path = require('path')
 const defaultSettings = require('./src/settings.js')
+const AddAssetHtmlPlugin = require('add-asset-html-webpack-plugin')
+const webpack = require('webpack')
 
 function resolve(dir) {
   return path.join(__dirname, dir)
@@ -38,15 +40,42 @@ module.exports = {
     },
     before: require('./mock/mock-server.js')
   },
-  configureWebpack: {
-    // provide the app's title in webpack's name field, so that
-    // it can be accessed in index.html to inject the correct title.
-    name: name,
-    resolve: {
-      alias: {
-        '@': resolve('src')
-      }
-    }
+// {
+//   // provide the app's title in webpack's name field, so that
+//   // it can be accessed in index.html to inject the correct title.
+//   name: name,
+//     resolve: {
+//   alias: {
+//     '@': resolve('src')
+//   }
+// },
+//   plugins: [
+//     new webpack.DllPlugin({
+//       path: path.join(__dirname, '.', '[name]-manifest.json'),
+//       name: '[name]_library'
+//     })
+//   ]
+// },
+  configureWebpack: config => {
+    // config.name = name
+    // config.alias = {
+    //   '@': resolve('src')
+    // }
+    // dll优化
+    config.plugins.push(new webpack.DllReferencePlugin({
+      context: process.cwd(),
+      manifest: require('./build/vendor-manifest.json')
+    }))
+    // 将打包出来文件动态引入index.html
+    config.plugins.push(
+      new AddAssetHtmlPlugin({
+        // dll文件位置
+        filepath: path.resolve(__dirname, './public/static/vendor.dll.js'),
+        // dll 引用路径
+        publicPath: '/static/',
+        outputPath: '/static/' // 输出的目录地址
+      })
+    )
   },
   chainWebpack(config) {
     // it can improve the speed of the first screen, it is recommended to turn on preload
@@ -63,6 +92,8 @@ module.exports = {
 
     // when there are many pages, it will cause too many meaningless requests
     config.plugins.delete('prefetch')
+
+    // config.plugins
 
     // set svg-sprite-loader
     config.module
@@ -84,38 +115,42 @@ module.exports = {
     config
       .when(process.env.NODE_ENV !== 'development',
         config => {
+          // config.plugin('DllReferencePlugin', {
+          //   context: process.cwd(),
+          //   manifest: require('./build/vendor-manifest.json')
+          // })
           config
             .plugin('ScriptExtHtmlWebpackPlugin')
             .after('html')
             .use('script-ext-html-webpack-plugin', [{
-            // `runtime` must same as runtimeChunk name. default is `runtime`
+              // `runtime` must same as runtimeChunk name. default is `runtime`
               inline: /runtime\..*\.js$/
             }])
             .end()
           config
             .optimization.splitChunks({
-              chunks: 'all',
-              cacheGroups: {
-                libs: {
-                  name: 'chunk-libs',
-                  test: /[\\/]node_modules[\\/]/,
-                  priority: 10,
-                  chunks: 'initial' // only package third parties that are initially dependent
-                },
-                elementUI: {
-                  name: 'chunk-elementUI', // split elementUI into a single package
-                  priority: 20, // the weight needs to be larger than libs and app or it will be packaged into libs or app
-                  test: /[\\/]node_modules[\\/]_?element-ui(.*)/ // in order to adapt to cnpm
-                },
-                commons: {
-                  name: 'chunk-commons',
-                  test: resolve('src/components'), // can customize your rules
-                  minChunks: 3, //  minimum common number
-                  priority: 5,
-                  reuseExistingChunk: true
-                }
+            chunks: 'all',
+            cacheGroups: {
+              libs: {
+                name: 'chunk-libs',
+                test: /[\\/]node_modules[\\/]/,
+                priority: 10,
+                chunks: 'initial' // only package third parties that are initially dependent
+              },
+              elementUI: {
+                name: 'chunk-elementUI', // split elementUI into a single package
+                priority: 20, // the weight needs to be larger than libs and app or it will be packaged into libs or app
+                test: /[\\/]node_modules[\\/]_?element-ui(.*)/ // in order to adapt to cnpm
+              },
+              commons: {
+                name: 'chunk-commons',
+                test: resolve('src/components'), // can customize your rules
+                minChunks: 3, //  minimum common number
+                priority: 5,
+                reuseExistingChunk: true
               }
-            })
+            }
+          })
           // https:// webpack.js.org/configuration/optimization/#optimizationruntimechunk
           config.optimization.runtimeChunk('single')
         }
